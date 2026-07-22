@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmailStatus {
+  QUEUED
+  SCHEDULED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  CANCELLED
+}
+
+enum BounceType {
+  HARD
+  SOFT
+}
+
+enum TrackingType {
+  OPEN
+  CLICK
+}
+
+enum SuppressionReason {
+  BOUNCE
+  COMPLAINT
+  UNSUBSCRIBE
+}
+
+enum BatchStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Email {
+  id                String       @id @default(uuid())
+  trackingId        String       @unique @default(uuid())
+  from              String
+  to                String
+  cc                String[]     @default([])
+  bcc               String[]     @default([])
+  subject           String
+  bodyHtml          String       @db.Text
+  bodyText          String?      @db.Text
+  templateId        String?
+  variablesJson     Json?
+  status            EmailStatus  @default(QUEUED)
+  provider          String?
+  providerMessageId String?
+  scheduledAt       DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  openedAt          DateTime?
+  openedCount       Int          @default(0)
+  clickedAt         DateTime?
+  clickedCount      Int          @default(0)
+  bouncedAt         DateTime?
+  bounceType        BounceType?
+  softBounceCount   Int          @default(0)
+  errorMessage      String?
+  batchId           String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  template       Template?       @relation(fields: [templateId], references: [id])
+  batch          Batch?          @relation(fields: [batchId], references: [id])
+  trackingEvents TrackingEvent[]
+
+  @@index([to, status])
+  @@index([batchId])
+  @@index([providerMessageId])
+  @@index([status, scheduledAt])
+  @@map("emails")
+}
+
+model Template {
+  name            String
+  id              String   @id @default(uuid())
+  subjectTemplate String
+  bodyHtml        String   @db.Text
+  bodyText        String?  @db.Text
+  variablesSchema Json?
+  category        String?
+  locale          String   @default("en")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  emails Email[]
+
+  @@unique([name, locale])
+  @@map("templates")
+}
+
+model TrackingEvent {
+  id        String       @id @default(uuid())
+  emailId   String
+  type      TrackingType
+  url       String?
+  ip        String?
+  userAgent String?
+  timestamp DateTime     @default(now())
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@index([emailId, type])
+  @@map("tracking_events")
+}
+
+model SuppressionEntry {
+  id           String            @id @default(uuid())
+  emailAddress String            @unique
+  reason       SuppressionReason
+  provider     String?
+  addedAt      DateTime          @default(now())
+
+  @@map("suppression_list")
+}
+
+model Batch {
+  id         String      @id @default(uuid())
+  name       String?
+  templateId String?
+  total      Int         @default(0)
+  queued     Int         @default(0)
+  sent       Int         @default(0)
+  delivered  Int         @default(0)
+  opened     Int         @default(0)
+  clicked    Int         @default(0)
+  bounced    Int         @default(0)
+  failed     Int         @default(0)
+  status     BatchStatus @default(QUEUED)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  emails Email[]
+
+  @@map("batches")
+}
